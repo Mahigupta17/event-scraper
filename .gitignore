@@ -1,0 +1,13 @@
+Ignore secret credential files
+.env
+credentials.json
+sheet-scraper-bot-*.json
+
+Ignore Python cache files and virtual environments
+pycache/
+*.pyc
+.venv/
+venv/
+
+Ignore Scrapy specific files that don't need to be shared
+.scrapy
