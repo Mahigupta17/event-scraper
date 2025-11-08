@@ -8,8 +8,8 @@ WORKDIR /app
 COPY . .
 
 # Install all necessary Python dependencies, now including Flask
-RUN pip install --no-cache-dir scrapy scrapy-playwright gspread google-auth-oauthlib google-generativeai flask pytz
-
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 # Install system dependencies required by Playwright browsers
 RUN playwright install-deps
 
