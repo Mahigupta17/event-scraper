@@ -3,16 +3,13 @@ version: '3.8'
 services:
   scraper:
     build: .
-    container_name:  climate-events-scraper
-    
-    # Securely loads environment variables from the .env file
+    container_name: climate-events-scraper
     env_file:
       - .env
-
-    # This volume mounts your credentials file into the container
-    volumes:
-      - volumes: ./credentials.json:/app/credentials.json
-
-    # This explicitly tells the Google client libraries where to find the credentials
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
