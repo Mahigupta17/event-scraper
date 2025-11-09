@@ -5,14 +5,22 @@ services:
     build: .
     container_name: climate-events-scraper
     
-    # Securely loads environment variables from the .env file
+    # Port mapping
+    ports:
+      - "8080:8080"
+    
+    # Environment variables from .env file
     env_file:
       - .env
-
-    # This volume mounts your credentials file into the container
+    
+    # Mount the credentials file
     volumes:
-      - ./sheet-scraper-bot-472309-de1c2aa26ac3.json:/app/credentials.json
-
-    # This explicitly tells the Google client libraries where to find the credentials
+      - ./sheet-scraper-bot-472309-de1c2aa26ac3.json:/app/credentials.json:ro
+    
+    # Set the credentials path
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
+      - PORT=8080
+    
+    # Restart policy
+    restart: unless-stopped
