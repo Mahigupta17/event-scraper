@@ -1,10 +1,8 @@
-# Use Python 3.9 slim image
 FROM python:3.9-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies for Playwright and compilation
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -30,12 +28,11 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     libu2f-udev \
     libvulkan1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy and install Python requirements
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
@@ -43,12 +40,16 @@ RUN pip install --no-cache-dir --upgrade pip && \
 RUN playwright install chromium && \
     playwright install-deps chromium
 
-# Copy entire project
+# Copy entire project including credentials
 COPY . .
+
+# Ensure credentials are copied
+COPY credentials.json /app/credentials.json
 
 # Create non-root user
 RUN useradd -m -u 1000 scrapy_user && \
-    chown -R scrapy_user:scrapy_user /app
+    chown -R scrapy_user:scrapy_user /app && \
+    chmod 644 /app/credentials.json
 
 # Switch to non-root user
 USER scrapy_user
@@ -56,9 +57,5 @@ USER scrapy_user
 # Expose port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
-
-# Run Flask app
+# Run the Flask app
 CMD ["python", "main.py"]

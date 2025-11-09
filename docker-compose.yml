@@ -9,18 +9,26 @@ services:
     ports:
       - "8080:8080"
     
-    # Environment variables from .env file
+    # Load environment variables from .env file
     env_file:
       - .env
     
-    # Mount the credentials file
+    # Mount credentials file
     volumes:
-      - ./sheet-scraper-bot-472309-de1c2aa26ac3.json:/app/credentials.json:ro
+      - ./credentials.json:/app/credentials.json:ro
     
-    # Set the credentials path
+    # Set environment variables
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json
       - PORT=8080
     
     # Restart policy
     restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
