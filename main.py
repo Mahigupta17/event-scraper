@@ -7,6 +7,7 @@ from datetime import datetime
 import csv
 import io
 import pandas as pd
+import sys
 
 app = Flask(__name__)
 
@@ -377,7 +378,6 @@ https://www.un.org/en/climatechange/events"></textarea>
             const file = input.files[0];
             if (!file) return;
             
-            // Validate file type
             const validExtensions = ['.csv', '.xls', '.xlsx'];
             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
             
@@ -387,15 +387,11 @@ https://www.un.org/en/climatechange/events"></textarea>
                 return;
             }
             
-            // Store file
             uploadedFormat = file;
-            
-            // Show file info
             document.getElementById('fileName').textContent = file.name;
             document.getElementById('uploadPrompt').textContent = 'File uploaded successfully!';
             document.getElementById('fileInfo').style.display = 'block';
             
-            // Try to extract columns (for CSV files we can preview)
             if (fileExtension === '.csv') {
                 const reader = new FileReader();
                 reader.onload = function(e) {
@@ -404,7 +400,6 @@ https://www.un.org/en/climatechange/events"></textarea>
                     const columns = firstLine.split(',').map(col => col.trim().replace(/^"|"$/g, ''));
                     extractedColumns = columns;
                     document.getElementById('columnCount').textContent = `${columns.length}`;
-                    console.log('📋 Detected columns:', columns);
                 };
                 reader.readAsText(file);
             } else {
@@ -429,7 +424,6 @@ https://www.un.org/en/climatechange/events"></textarea>
             const statusBox = document.getElementById('statusBox');
             const statusText = document.getElementById('statusText');
             
-            // Validation
             if (!projectName) {
                 alert('❌ Please enter a project name');
                 return;
@@ -442,12 +436,6 @@ https://www.un.org/en/climatechange/events"></textarea>
             
             if (!uploadedFormat) {
                 alert('❌ Please upload your Excel format template first!');
-                document.querySelector('.upload-area').style.borderColor = '#dc3545';
-                document.querySelector('.upload-area').style.background = '#fff5f5';
-                setTimeout(() => {
-                    document.querySelector('.upload-area').style.borderColor = '#1e3c72';
-                    document.querySelector('.upload-area').style.background = '#f0f4ff';
-                }, 2000);
                 return;
             }
             
@@ -458,7 +446,6 @@ https://www.un.org/en/climatechange/events"></textarea>
                 return;
             }
             
-            // Disable button and show loading
             btn.disabled = true;
             btnText.textContent = '⏳ Starting...';
             spinner.classList.add('show');
@@ -469,15 +456,11 @@ https://www.un.org/en/climatechange/events"></textarea>
                 🔗 Analyzing ${urls.length} website(s)...
             `;
             
-            // Create FormData
             const formData = new FormData();
             formData.append('project_name', projectName);
             formData.append('urls', JSON.stringify(urls));
             formData.append('format_file', uploadedFormat);
             
-            console.log('📤 Sending request with file:', uploadedFormat.name);
-            
-            // Send request
             fetch('/trigger', {
                 method: 'POST',
                 body: formData
@@ -503,7 +486,6 @@ https://www.un.org/en/climatechange/events"></textarea>
                 btn.disabled = false;
                 btnText.textContent = '🚀 Start Scraping Events';
                 spinner.classList.remove('show');
-                console.error('Error:', error);
             });
         }
         
@@ -528,9 +510,6 @@ https://www.un.org/en/climatechange/events"></textarea>
                         ${data.message}<br>
                         <small>Started: ${data.last_run || 'Just now'}</small>
                     `;
-                    btn.disabled = true;
-                    btnText.textContent = '⏳ Scraping Events...';
-                    spinner.classList.add('show');
                     setTimeout(pollStatus, 5000);
                 } else {
                     statusBox.className = 'status-box success show';
@@ -546,12 +525,10 @@ https://www.un.org/en/climatechange/events"></textarea>
                 }
             })
             .catch(error => {
-                console.error('Polling error:', error);
                 setTimeout(pollStatus, 5000);
             });
         }
         
-        // Drag and drop
         const uploadArea = document.querySelector('.upload-area');
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             uploadArea.addEventListener(eventName, e => {
@@ -563,20 +540,17 @@ https://www.un.org/en/climatechange/events"></textarea>
         ['dragenter', 'dragover'].forEach(eventName => {
             uploadArea.addEventListener(eventName, () => {
                 uploadArea.style.background = '#d4e4ff';
-                uploadArea.style.borderColor = '#2a5298';
             }, false);
         });
         
         ['dragleave', 'drop'].forEach(eventName => {
             uploadArea.addEventListener(eventName, () => {
                 uploadArea.style.background = '#f0f4ff';
-                uploadArea.style.borderColor = '#1e3c72';
             }, false);
         });
         
         uploadArea.addEventListener('drop', function(e) {
-            const dt = e.dataTransfer;
-            const files = dt.files;
+            const files = e.dataTransfer.files;
             document.getElementById('formatFile').files = files;
             handleFileUpload(document.getElementById('formatFile'));
         }, false);
@@ -599,48 +573,89 @@ def run_scraper_background():
     scraper_status["events_found"] = 0
     
     try:
-        env = os.environ.copy()
+        # Verify credentials
         creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
-        
         if not os.path.exists(creds_path):
-            for alt in ["credentials.json", "/app/credentials.json"]:
+            for alt in ["credentials.json", "/app/credentials.json", "/app/sheet-scraper-bot-472309-de1c2aa26ac3.json"]:
                 if os.path.exists(alt):
                     creds_path = alt
                     break
         
+        if not os.path.exists(creds_path):
+            raise FileNotFoundError(f"❌ Credentials not found. Checked: {creds_path}")
+        
+        # Verify Gemini API key
+        gemini_key = os.getenv("GOOGLE_API_KEY")
+        if not gemini_key:
+            raise ValueError("❌ GOOGLE_API_KEY not found in environment")
+        
+        # Setup environment
+        env = os.environ.copy()
         env["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
         env["SCRAPER_URLS"] = ",".join(scraper_config["urls"])
         env["SCRAPER_COLUMNS"] = ",".join(scraper_config["format_columns"])
         env["SCRAPER_PROJECT_NAME"] = scraper_config.get("project_name", "Climate Events")
         env["SCRAPER_SHEET_NAME"] = scraper_config["sheet_name"]
+        env["GOOGLE_API_KEY"] = gemini_key
         
-        print(f"🔑 Credentials: {creds_path}")
-        print(f"🔗 URLs: {len(scraper_config['urls'])}")
-        print(f"📋 Columns: {len(scraper_config['format_columns'])}")
+        print(f"✅ Configuration:")
+        print(f"   Credentials: {creds_path}")
+        print(f"   Gemini API: {'SET' if gemini_key else 'MISSING'}")
+        print(f"   URLs: {len(scraper_config['urls'])}")
+        print(f"   Columns: {len(scraper_config['format_columns'])}")
+        print(f"   Columns: {scraper_config['format_columns'][:5]}...")
         print("-"*80)
         
         scraper_status["message"] = f"Scraping {len(scraper_config['urls'])} websites..."
         
+        # Change to project directory
+        project_dir = "/app" if os.path.exists("/app/scrapy.cfg") else "."
+        
+        print(f"📂 Working directory: {os.getcwd()}")
+        print(f"📂 Project directory: {project_dir}")
+        print(f"🕷️  Running: scrapy crawl climate_events")
+        print("-"*80)
+        
+        # Run scrapy with detailed output
         result = subprocess.run(
-            ["scrapy", "crawl", "climate_events"],
+            ["scrapy", "crawl", "climate_events", "-L", "INFO"],
             capture_output=True,
             text=True,
             env=env,
-            timeout=1800,
-            check=True
+            cwd=project_dir,
+            timeout=1800
         )
         
         print("="*80)
-        print("✅ SCRAPER COMPLETED")
+        print("📤 SCRAPY OUTPUT:")
+        print("="*80)
+        print(result.stdout)
+        
+        if result.stderr:
+            print("="*80)
+            print("⚠️ SCRAPY ERRORS:")
+            print("="*80)
+            print(result.stderr)
+        
+        print("="*80)
+        print(f"Exit code: {result.returncode}")
         print("="*80)
         
-        scraper_status["message"] = "Completed successfully!"
+        if result.returncode == 0:
+            scraper_status["message"] = "Completed successfully!"
+        else:
+            scraper_status["message"] = f"Completed with warnings (exit code: {result.returncode})"
         
     except subprocess.TimeoutExpired:
         print("⏱️ Timeout after 30 minutes")
-        scraper_status["message"] = "Timed out"
+        scraper_status["message"] = "Timed out after 30 minutes"
+    except FileNotFoundError as e:
+        print(f"❌ File error: {e}")
+        scraper_status["message"] = str(e)
     except Exception as e:
         print(f"❌ Error: {e}")
+        import traceback
+        print(traceback.format_exc())
         scraper_status["message"] = f"Error: {str(e)[:200]}"
     finally:
         scraper_status["running"] = False
@@ -666,7 +681,7 @@ def trigger():
         print(f"📥 RECEIVED SCRAPING REQUEST")
         print(f"{'='*80}")
         print(f"Project: {project_name}")
-        print(f"URLs JSON: {urls_json}")
+        print(f"URLs: {urls_json}")
         print(f"Format file: {format_file.filename if format_file else 'NONE'}")
         print(f"{'='*80}\n")
         
@@ -694,9 +709,9 @@ def trigger():
             
             csv_reader = csv.reader(io.StringIO(content))
             headers = next(csv_reader)
-            scraper_config["format_columns"] = headers
-            print(f"✅ CSV: Extracted {len(headers)} columns")
-            print(f"   Columns: {', '.join(headers[:10])}...")
+            scraper_config["format_columns"] = [h.strip() for h in headers if h.strip()]
+            print(f"✅ CSV: Extracted {len(scraper_config['format_columns'])} columns")
+            print(f"   Columns: {scraper_config['format_columns'][:5]}...")
             
         elif filename.endswith(('.xlsx', '.xls')):
             try:
@@ -707,21 +722,19 @@ def trigger():
                 print(f"💾 Saved to: {temp_path}")
                 print(f"📊 File size: {os.path.getsize(temp_path)} bytes")
                 
-                # Try with openpyxl first
                 try:
                     df = pd.read_excel(temp_path, nrows=1, engine='openpyxl')
                 except:
-                    # Fallback to xlrd for older .xls files
-                    df = pd.read_excel(temp_path, nrows=1, engine='xlrd')
+                    df = pd.read_excel(temp_path, nrows=1)
                 
-                headers = df.columns.tolist()
+                headers = [str(h).strip() for h in df.columns.tolist() if str(h).strip() and str(h) != 'nan']
                 scraper_config["format_columns"] = headers
                 
                 if os.path.exists(temp_path):
                     os.remove(temp_path)
                 
                 print(f"✅ Excel: Extracted {len(headers)} columns")
-                print(f"   Columns: {', '.join(str(h) for h in headers[:10])}...")
+                print(f"   Columns: {headers[:5]}...")
                 
             except Exception as e:
                 print(f"❌ Excel processing error: {e}")
@@ -775,9 +788,30 @@ def health():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     print(f"🌐 Climate Events Scraper starting on port {port}")
+    print(f"🐍 Python version: {sys.version}")
+    print(f"📂 Working directory: {os.getcwd()}")
+    print(f"📂 Files: {os.listdir('.')}")
+    
+    # Verify scrapy project
+    if os.path.exists('scrapy.cfg'):
+        print("✅ Scrapy project found")
+    else:
+        print("⚠️ Warning: scrapy.cfg not found")
+    
+    # Check credentials
+    creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "credentials.json")
+    if os.path.exists(creds_path):
+        print(f"✅ Credentials found: {creds_path}")
+    else:
+        print(f"⚠️ Credentials not found: {creds_path}")
+    
+    # Check Gemini API key
+    if os.getenv("GOOGLE_API_KEY"):
+        print("✅ Gemini API key found")
+    else:
+        print("⚠️ Gemini API key not found")
+    
     app.run(host="0.0.0.0", port=port, debug=False)
-
-
 
 
 # from flask import Flask, render_template_string, request, jsonify
@@ -805,7 +839,8 @@ if __name__ == "__main__":
 #     "urls": [],
 #     "format_columns": [],
 #     "sheet_url": "https://docs.google.com/spreadsheets/d/1tDFA7DIRm0b-9mbZby2lNyfgYJtGXSjOwl5ezN3CeME/edit",
-#     "sheet_name": "Sheet4"
+#     "sheet_name": "Sheet4",
+#     "project_name": "Climate Events"
 # }
 
 # HTML_TEMPLATE = """
@@ -1022,6 +1057,34 @@ if __name__ == "__main__":
 #         .preset-urls li {
 #             margin: 5px 0;
 #         }
+
+#         #fileInfo {
+#             margin-top: 15px;
+#             padding: 15px;
+#             background: #e8f5e9;
+#             border-radius: 8px;
+#             border-left: 4px solid #4caf50;
+#         }
+
+#         #fileInfo p {
+#             margin: 0;
+#             color: #2e7d32;
+#         }
+
+#         #fileInfo button {
+#             margin-top: 10px;
+#             padding: 8px 16px;
+#             background: #fff;
+#             border: 1px solid #4caf50;
+#             border-radius: 5px;
+#             color: #2e7d32;
+#             cursor: pointer;
+#             font-size: 12px;
+#         }
+
+#         #fileInfo button:hover {
+#             background: #f1f8f4;
+#         }
 #     </style>
 # </head>
 # <body>
@@ -1046,10 +1109,8 @@ if __name__ == "__main__":
 #                 Event Websites to Scrape
 #             </div>
 #             <textarea id="urlList" placeholder="Enter event website URLs (one per line):
-# https://www.eventbrite.com
-# https://unfccc.int/calendar/events-list
-# https://www.un.org/en/climatechange/events
-# https://thinklandscape.globallandscapesforum.org"></textarea>
+# https://thinklandscape.globallandscapesforum.org/71474/climate-events-2025/
+# https://www.un.org/en/climatechange/events"></textarea>
 #             <p class="help-text">Paste URLs of event aggregator websites, one per line</p>
             
 #             <div class="preset-urls">
@@ -1071,13 +1132,28 @@ if __name__ == "__main__":
 #                 Excel Format Template
 #             </div>
 #             <label for="formatFile">Upload your Excel template with column headers:</label>
+            
 #             <div class="upload-area" onclick="document.getElementById('formatFile').click()">
 #                 <p style="font-size: 48px; margin-bottom: 10px;">📄</p>
-#                 <p style="font-weight: 600; margin-bottom: 5px;">Click to upload Excel/CSV</p>
+#                 <p style="font-weight: 600; margin-bottom: 5px;" id="uploadPrompt">Click to upload Excel/CSV</p>
 #                 <p class="help-text">Accepts .xlsx, .xls, or .csv files</p>
 #             </div>
+            
 #             <input type="file" id="formatFile" accept=".csv,.xlsx,.xls" style="display: none;" onchange="handleFileUpload(this)">
-#             <p id="fileName" style="margin-top: 10px; color: #1e3c72; font-weight: 600;"></p>
+            
+#             <!-- Show uploaded file info -->
+#             <div id="fileInfo" style="display: none;">
+#                 <p style="font-weight: 600;">
+#                     <span style="font-size: 20px;">✅</span> 
+#                     <span id="fileName"></span>
+#                 </p>
+#                 <p style="margin: 5px 0 0 0; font-size: 12px; color: #1b5e20;">
+#                     <span id="columnCount"></span> columns detected
+#                 </p>
+#                 <button onclick="clearFile()">
+#                     🗑️ Remove & Upload Different File
+#                 </button>
+#             </div>
             
 #             <div class="help-text" style="margin-top: 10px;">
 #                 Expected columns: Event Name, Date, Location, Description, Organizer, Type, Topic, etc.
@@ -1111,13 +1187,53 @@ if __name__ == "__main__":
     
 #     <script>
 #         let uploadedFormat = null;
+#         let extractedColumns = [];
         
 #         function handleFileUpload(input) {
 #             const file = input.files[0];
-#             if (file) {
-#                 document.getElementById('fileName').textContent = `✅ Uploaded: ${file.name}`;
-#                 uploadedFormat = file;
+#             if (!file) return;
+            
+#             // Validate file type
+#             const validExtensions = ['.csv', '.xls', '.xlsx'];
+#             const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+            
+#             if (!validExtensions.includes(fileExtension)) {
+#                 alert('❌ Invalid file type! Please upload .csv, .xls, or .xlsx file.');
+#                 input.value = '';
+#                 return;
 #             }
+            
+#             // Store file
+#             uploadedFormat = file;
+            
+#             // Show file info
+#             document.getElementById('fileName').textContent = file.name;
+#             document.getElementById('uploadPrompt').textContent = 'File uploaded successfully!';
+#             document.getElementById('fileInfo').style.display = 'block';
+            
+#             // Try to extract columns (for CSV files we can preview)
+#             if (fileExtension === '.csv') {
+#                 const reader = new FileReader();
+#                 reader.onload = function(e) {
+#                     const text = e.target.result;
+#                     const firstLine = text.split('\\n')[0];
+#                     const columns = firstLine.split(',').map(col => col.trim().replace(/^"|"$/g, ''));
+#                     extractedColumns = columns;
+#                     document.getElementById('columnCount').textContent = `${columns.length}`;
+#                     console.log('📋 Detected columns:', columns);
+#                 };
+#                 reader.readAsText(file);
+#             } else {
+#                 document.getElementById('columnCount').textContent = 'Processing...';
+#             }
+#         }
+        
+#         function clearFile() {
+#             uploadedFormat = null;
+#             extractedColumns = [];
+#             document.getElementById('formatFile').value = '';
+#             document.getElementById('fileInfo').style.display = 'none';
+#             document.getElementById('uploadPrompt').textContent = 'Click to upload Excel/CSV';
 #         }
         
 #         function startScraper() {
@@ -1129,39 +1245,55 @@ if __name__ == "__main__":
 #             const statusBox = document.getElementById('statusBox');
 #             const statusText = document.getElementById('statusText');
             
+#             // Validation
 #             if (!projectName) {
-#                 alert('Please enter a project name');
+#                 alert('❌ Please enter a project name');
 #                 return;
 #             }
             
 #             if (!urlList) {
-#                 alert('Please enter at least one event website URL');
+#                 alert('❌ Please enter at least one event website URL');
 #                 return;
 #             }
             
 #             if (!uploadedFormat) {
-#                 alert('Please upload your Excel format template');
+#                 alert('❌ Please upload your Excel format template first!');
+#                 document.querySelector('.upload-area').style.borderColor = '#dc3545';
+#                 document.querySelector('.upload-area').style.background = '#fff5f5';
+#                 setTimeout(() => {
+#                     document.querySelector('.upload-area').style.borderColor = '#1e3c72';
+#                     document.querySelector('.upload-area').style.background = '#f0f4ff';
+#                 }, 2000);
 #                 return;
 #             }
             
-#             const urls = urlList.split('\n').filter(url => url.trim()).map(url => url.trim());
+#             const urls = urlList.split('\\n').filter(url => url.trim()).map(url => url.trim());
             
 #             if (urls.length === 0) {
-#                 alert('No valid URLs found');
+#                 alert('❌ No valid URLs found');
 #                 return;
 #             }
             
+#             // Disable button and show loading
 #             btn.disabled = true;
 #             btnText.textContent = '⏳ Starting...';
 #             spinner.classList.add('show');
 #             statusBox.className = 'status-box loading show';
-#             statusText.innerHTML = '<strong>Initializing Climate Events Scraper...</strong><br>Analyzing Excel format and preparing extraction...';
+#             statusText.innerHTML = `
+#                 <strong>Initializing Climate Events Scraper...</strong><br>
+#                 📄 Processing format file: ${uploadedFormat.name}<br>
+#                 🔗 Analyzing ${urls.length} website(s)...
+#             `;
             
+#             // Create FormData
 #             const formData = new FormData();
 #             formData.append('project_name', projectName);
 #             formData.append('urls', JSON.stringify(urls));
 #             formData.append('format_file', uploadedFormat);
             
+#             console.log('📤 Sending request with file:', uploadedFormat.name);
+            
+#             // Send request
 #             fetch('/trigger', {
 #                 method: 'POST',
 #                 body: formData
@@ -1169,7 +1301,12 @@ if __name__ == "__main__":
 #             .then(response => response.json())
 #             .then(data => {
 #                 if (data.status === 'started') {
-#                     statusText.innerHTML = `<strong>✅ Scraper Started!</strong><br>Processing ${urls.length} event website(s). This may take 10-30 minutes depending on data volume.`;
+#                     statusText.innerHTML = `
+#                         <strong>✅ Scraper Started!</strong><br>
+#                         Processing ${urls.length} event website(s).<br>
+#                         Format: ${uploadedFormat.name}<br>
+#                         <small>This may take 10-30 minutes depending on data volume.</small>
+#                     `;
 #                     btnText.textContent = '⏳ Scraping Events...';
 #                     startPolling();
 #                 } else {
@@ -1182,6 +1319,7 @@ if __name__ == "__main__":
 #                 btn.disabled = false;
 #                 btnText.textContent = '🚀 Start Scraping Events';
 #                 spinner.classList.remove('show');
+#                 console.error('Error:', error);
 #             });
 #         }
         
@@ -1304,7 +1442,7 @@ if __name__ == "__main__":
 #             capture_output=True,
 #             text=True,
 #             env=env,
-#             timeout=1800,  # 30 minutes
+#             timeout=1800,
 #             check=True
 #         )
         
@@ -1333,67 +1471,111 @@ if __name__ == "__main__":
 #     global scraper_status, scraper_config
     
 #     if scraper_status["running"]:
-#         return jsonify({"status": "already_running", "message": "Scraper is running"}), 400
+#         return jsonify({"status": "already_running", "message": "Scraper is already running"}), 400
     
 #     try:
 #         project_name = request.form.get('project_name', 'Climate_Events')
 #         urls_json = request.form.get('urls')
 #         format_file = request.files.get('format_file')
         
+#         print(f"\n{'='*80}")
+#         print(f"📥 RECEIVED SCRAPING REQUEST")
+#         print(f"{'='*80}")
+#         print(f"Project: {project_name}")
+#         print(f"URLs JSON: {urls_json}")
+#         print(f"Format file: {format_file.filename if format_file else 'NONE'}")
+#         print(f"{'='*80}\n")
+        
+#         if not format_file:
+#             return jsonify({"status": "error", "message": "No Excel file uploaded"}), 400
+        
 #         import json
 #         urls = json.loads(urls_json)
 #         scraper_config["urls"] = urls
 #         scraper_config["project_name"] = project_name
         
-#         if format_file:
-#             filename = format_file.filename.lower()
-            
-#             if filename.endswith('.csv'):
+#         filename = format_file.filename.lower()
+#         print(f"📄 Processing file: {filename}")
+        
+#         if filename.endswith('.csv'):
+#             try:
+#                 content = format_file.read().decode('utf-8')
+#             except:
+#                 format_file.seek(0)
 #                 try:
-#                     content = format_file.read().decode('utf-8')
+#                     content = format_file.read().decode('latin-1')
 #                 except:
 #                     format_file.seek(0)
-#                     try:
-#                         content = format_file.read().decode('latin-1')
-#                     except:
-#                         format_file.seek(0)
-#                         content = format_file.read().decode('utf-8', errors='ignore')
+#                     content = format_file.read().decode('utf-8', errors='ignore')
+            
+#             csv_reader = csv.reader(io.StringIO(content))
+#             headers = next(csv_reader)
+#             scraper_config["format_columns"] = headers
+#             print(f"✅ CSV: Extracted {len(headers)} columns")
+#             print(f"   Columns: {', '.join(headers[:10])}...")
+            
+#         elif filename.endswith(('.xlsx', '.xls')):
+#             try:
+#                 format_file.seek(0)
+#                 temp_path = '/tmp/format_template.xlsx'
+#                 format_file.save(temp_path)
                 
-#                 csv_reader = csv.reader(io.StringIO(content))
-#                 headers = next(csv_reader)
+#                 print(f"💾 Saved to: {temp_path}")
+#                 print(f"📊 File size: {os.path.getsize(temp_path)} bytes")
+                
+#                 # Try with openpyxl first
+#                 try:
+#                     df = pd.read_excel(temp_path, nrows=1, engine='openpyxl')
+#                 except:
+#                     # Fallback to xlrd for older .xls files
+#                     df = pd.read_excel(temp_path, nrows=1, engine='xlrd')
+                
+#                 headers = df.columns.tolist()
 #                 scraper_config["format_columns"] = headers
                 
-#             elif filename.endswith(('.xlsx', '.xls')):
-#                 try:
-#                     format_file.seek(0)
-#                     temp_path = '/tmp/format_template.xlsx'
-#                     format_file.save(temp_path)
-                    
-#                     df = pd.read_excel(temp_path, nrows=1, engine='openpyxl')
-#                     headers = df.columns.tolist()
-#                     scraper_config["format_columns"] = headers
-                    
-#                     if os.path.exists(temp_path):
-#                         os.remove(temp_path)
-                    
-#                     print(f"✅ Extracted {len(headers)} columns from Excel")
-#                 except Exception as e:
-#                     print(f"❌ Excel error: {e}")
-#                     if os.path.exists('/tmp/format_template.xlsx'):
-#                         os.remove('/tmp/format_template.xlsx')
-#                     return jsonify({"status": "error", "message": str(e)}), 400
-#             else:
-#                 return jsonify({"status": "error", "message": "Upload CSV or Excel"}), 400
+#                 if os.path.exists(temp_path):
+#                     os.remove(temp_path)
+                
+#                 print(f"✅ Excel: Extracted {len(headers)} columns")
+#                 print(f"   Columns: {', '.join(str(h) for h in headers[:10])}...")
+                
+#             except Exception as e:
+#                 print(f"❌ Excel processing error: {e}")
+#                 import traceback
+#                 traceback.print_exc()
+#                 if os.path.exists('/tmp/format_template.xlsx'):
+#                     os.remove('/tmp/format_template.xlsx')
+#                 return jsonify({
+#                     "status": "error", 
+#                     "message": f"Failed to read Excel file: {str(e)}"
+#                 }), 400
+#         else:
+#             return jsonify({
+#                 "status": "error", 
+#                 "message": "Please upload a CSV or Excel file (.csv, .xlsx, .xls)"
+#             }), 400
         
-#         print(f"📋 Columns: {scraper_config['format_columns'][:5]}...")
+#         if not scraper_config["format_columns"]:
+#             return jsonify({
+#                 "status": "error", 
+#                 "message": "No columns found in uploaded file"
+#             }), 400
+        
+#         print(f"\n✅ Configuration ready:")
+#         print(f"   - URLs: {len(urls)}")
+#         print(f"   - Columns: {len(scraper_config['format_columns'])}")
+#         print(f"\n🚀 Starting scraper thread...\n")
         
 #         thread = threading.Thread(target=run_scraper_background, daemon=True)
 #         thread.start()
         
-#         return jsonify({"status": "started", "message": f"Started for {len(urls)} URLs"}), 200
+#         return jsonify({
+#             "status": "started", 
+#             "message": f"Scraper started for {len(urls)} URLs with {len(scraper_config['format_columns'])} columns"
+#         }), 200
         
 #     except Exception as e:
-#         print(f"❌ Error: {e}")
+#         print(f"\n❌ TRIGGER ERROR: {e}")
 #         import traceback
 #         traceback.print_exc()
 #         return jsonify({"status": "error", "message": str(e)}), 500
@@ -1410,3 +1592,7 @@ if __name__ == "__main__":
 #     port = int(os.environ.get("PORT", 8080))
 #     print(f"🌐 Climate Events Scraper starting on port {port}")
 #     app.run(host="0.0.0.0", port=port, debug=False)
+
+
+
+
