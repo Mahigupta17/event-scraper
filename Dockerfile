@@ -4,12 +4,14 @@ FROM python:3.9-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy all project files
-COPY . .
-
-# Install all necessary Python dependencies, now including Flask
+# Copy only requirements first for caching
 COPY requirements.txt .
+
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Then copy rest of project
+COPY . .
 # Install system dependencies required by Playwright browsers
 RUN playwright install-deps
 
@@ -22,4 +24,5 @@ RUN playwright install chromium
 
 # --- *** THE NEW COMMAND *** ---
 # Set the default command to run the Flask web server
-CMD ["python", "main.py"]
+CMD ["scrapy", "crawl", "climate_events"]
+
