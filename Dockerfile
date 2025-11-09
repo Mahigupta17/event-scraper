@@ -24,5 +24,4 @@ RUN playwright install chromium
 
 # --- *** THE NEW COMMAND *** ---
 # Set the default command to run the Flask web server
-CMD ["scrapy", "crawl", "climate_events"]
-
+CMD ["python", "main.py"]

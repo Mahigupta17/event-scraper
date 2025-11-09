@@ -2,5 +2,39 @@ import scrapy
 
 class ClimateEventItem(scrapy.Item):
     """Dynamic item that can hold any fields based on Excel template"""
-    # This will be populated dynamically based on user's Excel columns
-    pass
+    # Base fields
+    scraped_at = scrapy.Field()
+    source_url = scrapy.Field()
+    scraping_status = scrapy.Field()
+    
+    # Excel format columns - these will be populated dynamically
+    name_of_event = scrapy.Field()
+    description = scrapy.Field()
+    event_website = scrapy.Field()
+    main_organizers = scrapy.Field()
+    organizer_type = scrapy.Field()
+    supporting_organizers = scrapy.Field()
+    event_dates = scrapy.Field()
+    event_duration = scrapy.Field()
+    event_format = scrapy.Field()
+    event_platform = scrapy.Field()
+    location = scrapy.Field()
+    venue = scrapy.Field()
+    live_stream_option = scrapy.Field()
+    frequency_of_event = scrapy.Field()
+    agenda_of_event = scrapy.Field()
+    goals_of_event = scrapy.Field()
+    target_audience = scrapy.Field()
+    participation_type = scrapy.Field()
+    participation_fee = scrapy.Field()
+    open_call_for_collaboration = scrapy.Field()
+    volunteer_opportunities = scrapy.Field()
+    types_of_sessions = scrapy.Field()
+    event_domain = scrapy.Field()
+    event_sub_domain = scrapy.Field()
+    event_theme = scrapy.Field()
+    sponsors = scrapy.Field()
+    speakers_at_event = scrapy.Field()
+    past_editions = scrapy.Field()
+    organizer_contact = scrapy.Field()
+    remarks = scrapy.Field()

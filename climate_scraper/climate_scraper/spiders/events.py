@@ -27,8 +27,8 @@ class ClimateEventsSpider(scrapy.Spider):
         },
         'PLAYWRIGHT_DEFAULT_NAVIGATION_TIMEOUT': 90000,
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'CONCURRENT_REQUESTS': 1,  # Reduced to 1 for stability
-        'DOWNLOAD_DELAY': 5,  # Increased delay
+        'CONCURRENT_REQUESTS': 1,
+        'DOWNLOAD_DELAY': 5,
         'ROBOTSTXT_OBEY': False,
     }
     
@@ -38,50 +38,36 @@ class ClimateEventsSpider(scrapy.Spider):
         self.failed_count = 0
         self.ist = pytz.timezone('Asia/Kolkata')
         
-        # Get configuration from environment
-        self.urls_to_scrape = self.get_urls_from_env()
-        self.format_columns = self.get_format_from_env()
+        # Use the URLs provided in your task
+        self.urls_to_scrape = [
+            "https://www.un.org/en/climatechange/events",
+            "https://thinklandscape.globallandscapesforum.org/71474/climate-events-2025/",
+            "https://www.eventbrite.com/d/india--bangalore/climate-events/",
+            "https://www.c40.org/events/",
+            "https://unfccc.int/calendar/events-list"
+        ]
+        
+        # Define columns based on your Excel format
+        self.format_columns = [
+            "Name of event", "Description", "Event website", "Main organizers", 
+            "Organizer Type", "Supporting organizers", "Event Date(s)", 
+            "Event duration", "Event Format", "Event platform (if virtual)",
+            "Location (if in-person)", "Venue (if in-person)", 
+            "Live-stream or virtual participation option", "Frequency of event",
+            "Agenda of the event", "Goals of the event", "Target Audience",
+            "Participation Type", "Participation fee", 
+            "Open call for collaboration", "Volunteer Opportunities",
+            "Types of Sessions in the event programming", "Event Domain",
+            "Event Sub-Domain", "Event Theme", "Sponsors", 
+            "Speakers at the event", "Past editions (if any)", 
+            "Organizer Contact", "Remarks"
+        ]
         
         self.logger.info(f"🎯 Initialized with {len(self.urls_to_scrape)} URLs")
         self.logger.info(f"📋 Extracting {len(self.format_columns)} fields per event")
-        self.logger.info(f"📝 Columns: {self.format_columns}")
-    
-    def get_urls_from_env(self):
-        """Get URLs from environment variable"""
-        urls_str = os.getenv("SCRAPER_URLS", "")
-        self.logger.info(f"🔍 Reading URLs from environment")
-        
-        if urls_str:
-            urls = [url.strip() for url in urls_str.split(",") if url.strip()]
-            self.logger.info(f"✅ Found {len(urls)} URLs")
-            for i, url in enumerate(urls, 1):
-                self.logger.info(f"  {i}. {url}")
-            return urls
-        
-        self.logger.error("❌ No URLs found!")
-        return []
-    
-    def get_format_from_env(self):
-        """Get format columns from environment variable"""
-        columns_str = os.getenv("SCRAPER_COLUMNS", "")
-        self.logger.info(f"🔍 Reading column format from environment")
-        
-        if columns_str:
-            columns = [col.strip() for col in columns_str.split(",") if col.strip()]
-            self.logger.info(f"✅ Found {len(columns)} columns")
-            for i, col in enumerate(columns[:5], 1):
-                self.logger.info(f"  {i}. {col}")
-            return columns
-        
-        self.logger.warning("⚠️ No columns found, using defaults")
-        return ["Event Name", "Date", "Location", "Description"]
     
     def start_requests(self):
         """Generate requests for all configured URLs"""
-        if not self.urls_to_scrape:
-            self.logger.error("❌ No URLs configured!")
-            return
-        
         for url in self.urls_to_scrape:
             if not url.startswith(('http://', 'https://')):
                 url = 'https://' + url
@@ -158,6 +144,8 @@ class ClimateEventsSpider(scrapy.Spider):
                     let main = document.querySelector('main');
                     if (!main) main = document.querySelector('[role="main"]');
                     if (!main) main = document.querySelector('.main-content');
+                    if (!main) main = document.querySelector('.events-list');
+                    if (!main) main = document.querySelector('.calendar');
                     if (!main) main = document.body;
                     
                     return main.innerText;
@@ -202,9 +190,8 @@ class ClimateEventsSpider(scrapy.Spider):
                     event["source_url"] = url
                     event["scraping_status"] = "Success"
                     
-                    # Get first column name for logging
-                    first_col = self.format_columns[0] if self.format_columns else "Event Name"
-                    event_name = event.get(first_col, 'N/A')
+                    # Log event name for tracking
+                    event_name = event.get("Name of event", 'N/A')
                     self.logger.info(f"📌 Event {self.scraped_count} ({idx}/{len(events_data)}): {str(event_name)[:60]}")
                     
                     yield event
@@ -241,7 +228,7 @@ class ClimateEventsSpider(scrapy.Spider):
             columns_formatted = "\n".join([f'  "{col}"' for col in columns])
             
             # Create sample JSON structure
-            sample_event = {col: "..." for col in columns}
+            sample_event = {col: "N/A" for col in columns}
             sample_json = json.dumps([sample_event], indent=2)
             
             prompt = f"""You are an expert at extracting climate and sustainability events from web pages.
@@ -257,13 +244,21 @@ class ClimateEventsSpider(scrapy.Spider):
 For EACH event found, extract these EXACT fields (use these exact names):
 {columns_formatted}
 
+**SPECIAL INSTRUCTIONS for specific fields:**
+- "Event Date(s)": Format as "DD Month YYYY" or "DD-MM-YYYY" or date ranges
+- "Event duration": Use "Half-Day", "1 Day", "2 Days", etc. if mentioned
+- "Event Format": Use "Virtual", "In-person", or "Hybrid"
+- "Organizer Type": Use "Startups", "Investors", "Corporates" if applicable
+- "Participation Type": Use "Sign up", "Invite-only", "Application based"
+- "Target Audience": Use appropriate audience types from content
+- For empty fields, use "N/A"
+
 **RULES:**
 1. Extract ALL events on the page (there may be multiple)
 2. If a field is not found, use "N/A"
-3. For dates: extract in readable format like "15 January 2025" or "January 15-17, 2025"
-4. For locations: include city and country, or "Virtual" if online
-5. Keep descriptions concise (2-3 sentences maximum)
-6. Extract organizers, sponsors, themes, formats, etc. as they appear in the column names
+3. Keep descriptions concise (2-3 sentences maximum)
+4. Focus on climate, sustainability, environment, clean energy topics
+5. Extract organizers, sponsors, themes, formats as they appear
 
 **CRITICAL:** Return ONLY a JSON array with these EXACT field names. No markdown, no explanations, just the JSON.
 
@@ -315,6 +310,10 @@ Return the JSON array now:"""
             valid_events = []
             for event in events:
                 if isinstance(event, dict) and len(event) > 0:
+                    # Ensure all columns are present
+                    for col in self.format_columns:
+                        if col not in event:
+                            event[col] = "N/A"
                     valid_events.append(event)
             
             return valid_events

@@ -57,14 +57,24 @@ class ClimateEventsPipeline:
         
         # Initialize headers
         self.initialize_headers()
-    
+
+
     def get_format_columns(self):
-        """Get format columns from environment"""
-        columns_str = os.getenv("SCRAPER_COLUMNS", "")
-        if columns_str:
-            columns = [col.strip() for col in columns_str.split(",") if col.strip()]
-            return columns
-        return ["Event Name", "Date", "Location", "Description"]
+       """Get format columns based on Excel template"""
+       return [
+        "Name of event", "Description", "Event website", "Main organizers", 
+        "Organizer Type", "Supporting organizers", "Event Date(s)", 
+        "Event duration", "Event Format", "Event platform (if virtual)",
+        "Location (if in-person)", "Venue (if in-person)", 
+        "Live-stream or virtual participation option", "Frequency of event",
+        "Agenda of the event", "Goals of the event", "Target Audience",
+        "Participation Type", "Participation fee", 
+        "Open call for collaboration", "Volunteer Opportunities",
+        "Types of Sessions in the event programming", "Event Domain",
+        "Event Sub-Domain", "Event Theme", "Sponsors", 
+        "Speakers at the event", "Past editions (if any)", 
+        "Organizer Contact", "Remarks"
+    ]
     
     def initialize_headers(self):
         """Add headers if sheet is empty"""
@@ -103,107 +113,48 @@ class ClimateEventsPipeline:
         return result
     
     def process_item(self, item, spider):
-        """Write each event to Google Sheets"""
+      """Write each event to Google Sheets"""
+      try:
+        # Get current row count
+        all_values = self.sheet.get_all_values()
+        sr_no = len([row for row in all_values if row and any(row)])
         
-        try:
-            # Get current row count (with retry)
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    all_values = self.sheet.get_all_values()
-                    sr_no = len([row for row in all_values if row and any(row)])
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        spider.logger.warning(f"⚠️ Retry {attempt + 1}/{max_retries} getting row count: {e}")
-                        time.sleep(2)
-                    else:
-                        raise
-            
-            timestamp = datetime.now(self.ist).strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Build row: Sr.No + Timestamp + Format Columns + Source + Status
-            row = [
-                sr_no,  # Serial number
-                timestamp,
-            ]
-            
-            # Add data for each format column
-            for col in self.format_columns:
-                value = item.get(col, "N/A")
-                
-                # Handle None values
-                if value is None:
-                    value = "N/A"
-                
-                # Convert to string and limit length
-                value_str = str(value)
-                if len(value_str) > 50000:  # Google Sheets cell limit
-                    value_str = value_str[:50000] + "... [truncated]"
-                
-                row.append(value_str)
-            
-            # Add source URL and status
-            row.append(str(item.get("source_url", "N/A")))
-            row.append(str(item.get("scraping_status", "Success")))
-            
-            # Log
-            event_name = item.get(self.format_columns[0] if self.format_columns else "Event Name", "N/A")
-            spider.logger.info("=" * 70)
-            spider.logger.info(f"📝 Writing to Sheet4:")
-            spider.logger.info(f"  Event: {str(event_name)[:60]}")
-            spider.logger.info(f"  Row: {sr_no}")
-            spider.logger.info("=" * 70)
-            
-            # Append row with retry logic
-            for attempt in range(max_retries):
-                try:
-                    self.sheet.append_row(row, value_input_option='USER_ENTERED')
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        spider.logger.warning(f"⚠️ Retry {attempt + 1}/{max_retries} appending row: {e}")
-                        time.sleep(2)
-                    else:
-                        raise
-            
-            # Get row number
-            row_number = len(self.sheet.get_all_values())
-            
-            # Format row (only highlight failures)
-            try:
-                end_col = self.get_column_letter(len(row))
-                
-                # Highlight failed scrapes
-                if item.get("scraping_status") != "Success":
-                    self.sheet.format(f'A{row_number}:{end_col}{row_number}', {
-                        "backgroundColor": {"red": 1, "green": 0.85, "blue": 0.85}
-                    })
-                
-                # Text wrapping for description-like columns
-                for i, col in enumerate(self.format_columns, start=3):
-                    col_lower = col.lower()
-                    if any(word in col_lower for word in ['description', 'agenda', 'theme', 'goals', 'objective']):
-                        col_letter = self.get_column_letter(i)
-                        self.sheet.format(f'{col_letter}{row_number}', {
-                            "wrapStrategy": "WRAP",
-                            "verticalAlignment": "TOP"
-                        })
-            except Exception as e:
-                spider.logger.warning(f"⚠️ Formatting error (non-critical): {e}")
-            
-            self.items_scraped += 1
-            spider.logger.info(f"✅ Successfully added to row {row_number}")
-            
-        except Exception as e:
-            spider.logger.error(f"❌ Pipeline error: {e}")
-            import traceback
-            spider.logger.error(f"Traceback:\n{traceback.format_exc()}")
-            
-            # Don't raise - allow scraping to continue
-            spider.logger.warning(f"⚠️ Continuing despite error...")
+        timestamp = datetime.now(self.ist).strftime("%Y-%m-%d %H:%M:%S")
         
-        return item
+        # Build row: Sr.No + Timestamp + Format Columns + Source + Status
+        row = [
+            sr_no,  # Serial number
+            timestamp,
+        ]
+        
+        # Add data for each format column (using the exact Excel column names)
+        for col in self.format_columns:
+            value = item.get(col, "N/A")
+            
+            # Handle None values
+            if value is None:
+                value = "N/A"
+            
+            # Convert to string and limit length
+            value_str = str(value)
+            if len(value_str) > 50000:  # Google Sheets cell limit
+                value_str = value_str[:50000] + "... [truncated]"
+            
+            row.append(value_str)
+        
+        # Add source URL and status
+        row.append(str(item.get("source_url", "N/A")))
+        row.append(str(item.get("scraping_status", "Success")))
+        
+        # Append to Google Sheets
+        self.sheet.append_row(row, value_input_option='USER_ENTERED')
+        
+        spider.logger.info(f"✅ Successfully added event to Google Sheets")
+        
+      except Exception as e:
+        spider.logger.error(f"❌ Pipeline error: {e}")
+    
+      return item
     
     def close_spider(self, spider):
         """Add separator when scraping completes"""
